@@ -1,0 +1,200 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const telegram = window.Telegram.WebApp;
+
+// Initialize Telegram WebApp
+telegram.ready();
+telegram.expand();
+
+// Game state
+let player = {
+    x: 250,
+    y: 250,
+    health: 100,
+    ammo: 50,
+    speed: 5,
+    damage: 10
+};
+
+let coins = 0;
+let level = 1;
+let zombies = [];
+let bullets = [];
+let upgrades = {
+    damage: 1,
+    speed: 1,
+    health: 1
+};
+
+// Canvas setup
+canvas.width = 500;
+canvas.height = 500;
+
+// Player class
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 20;
+        this.height = 20;
+    }
+    
+    draw() {
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    
+    shoot(targetX, targetY) {
+        if (player.ammo > 0) {
+            bullets.push(new Bullet(this.x, this.y, targetX, targetY));
+            player.ammo--;
+        }
+    }
+}
+
+// Zombie class
+class Zombie {
+    constructor(x, y, level) {
+        this.x = x;
+        this.y = y;
+        this.width = 20;
+        this.height = 20;
+        this.health = 20 * level;
+        this.speed = 1 + (level * 0.2);
+    }
+    
+    draw() {
+        ctx.fillStyle = 'green';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    
+    moveTowardsPlayer() {
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 0) {
+            this.x += (dx / distance) * this.speed;
+            this.y += (dy / distance) * this.speed;
+        }
+    }
+    
+    checkCollision() {
+        if (Math.abs(this.x - player.x) < 20 && 
+            Math.abs(this.y - player.y) < 20) {
+            player.health -= 5;
+            updateUI();
+        }
+    }
+}
+
+// Bullet class
+class Bullet {
+    constructor(x, y, targetX, targetY) {
+        this.x = x;
+        this.y = y;
+        this.speed = 8;
+        const dx = targetX - x;
+        const dy = targetY - y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        this.vx = (dx / distance) * this.speed;
+        this.vy = (dy / distance) * this.speed;
+    }
+    
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+    }
+    
+    draw() {
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x, this.y, 5, 5);
+    }
+}
+
+// Spawn zombies
+function spawnWave() {
+    const zombieCount = 5 + (level * 2);
+    for (let i = 0; i < zombieCount; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        zombies.push(new Zombie(x, y, level));
+    }
+}
+
+// Game loop
+function gameLoop() {
+    if (player.health <= 0) {
+        gameOver();
+        return;
+    }
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw player
+    const p = new Player(player.x, player.y);
+    p.draw();
+    
+    // Update and draw zombies
+    zombies.forEach((zombie, index) => {
+        zombie.moveTowardsPlayer();
+        zombie.checkCollision();
+        zombie.draw();
+    });
+    
+    // Update and draw bullets
+    bullets.forEach((bullet, index) => {
+        bullet.update();
+        bullet.draw();
+        
+        // Check bullet-zombie collision
+        zombies.forEach((zombie, zIndex) => {
+            if (Math.abs(bullet.x - zombie.x) < 20 && 
+                Math.abs(bullet.y - zombie.y) < 20) {
+                zombie.health -= player.damage;
+                bullets.splice(index, 1);
+                
+                if (zombie.health <= 0) {
+                    zombies.splice(zIndex, 1);
+                    coins += 10;
+                    updateUI();
+                }
+            }
+        });
+    });
+    
+    // Check for level completion
+    if (zombies.length === 0) {
+        level++;
+        spawnWave();
+    }
+    
+    requestAnimationFrame(gameLoop);
+}
+
+// UI updates
+function updateUI() {
+    document.getElementById('health').textContent = player.health;
+    document.getElementById('coins').textContent = coins;
+    document.getElementById('level').textContent = level;
+}
+
+// Game over
+function gameOver() {
+    const score = coins;
+    telegram.showAlert(`Game Over! Score: ${score}`);
+    telegram.close();
+}
+
+// Controls
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const p = new Player(player.x, player.y);
+    p.shoot(x, y);
+});
+
+// Start game
+spawnWave();
+gameLoop();
